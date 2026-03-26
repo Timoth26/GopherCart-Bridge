@@ -17,12 +17,16 @@ type Config struct {
 }
 
 func Load() (*Config, error) {
+	dbPass, err := getRequiredEnv("DB_PASS")
+	if err != nil {
+		return nil, err
+	}
 	cfg := &Config{
 		Port:      getEnv("APP_PORT", "8080"),
 		DBHost:    getEnv("DB_HOST", "localhost"),
 		DBPort:    getEnv("DB_PORT", "5432"),
 		DBUser:    getEnv("DB_USER", "postgres"),
-		DBPass:    getEnv("DB_PASS", "postgres"),
+		DBPass:    dbPass,
 		DBName:    getEnv("DB_NAME", "supplier_bridge"),
 		RedisAddr: getEnv("REDIS_ADDR", "localhost:6379"),
 	}
@@ -53,4 +57,11 @@ func validatePort(name, value string) error {
 		return fmt.Errorf("%s must be in range 1-65535", name)
 	}
 	return nil
+}
+
+func getRequiredEnv(key string) (string, error) {
+	if val := os.Getenv(key); val != "" {
+		return val, nil
+	}
+	return "", fmt.Errorf("environment variable %s is required", key)
 }
