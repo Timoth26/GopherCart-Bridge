@@ -1,0 +1,98 @@
+package supplier
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"time"
+
+	"github.com/Timoth26/GopherCart-Bridge/internal/domain"
+)
+
+type Client struct {
+	httpClient *http.Client
+	baseURL    string
+	log        *slog.Logger
+}
+
+type supplierProduct struct {
+	ID    int64   `json:"id"`
+	Name  string  `json:"name"`
+	Price float64 `json:"price"`
+	Stock int     `json:"stock"`
+}
+
+var _ domain.SupplierClient = (*Client)(nil)
+
+func NewClient(baseURL string, timeout time.Duration, log *slog.Logger) *Client {
+	return &Client{
+		httpClient: &http.Client{Timeout: timeout},
+		baseURL:    baseURL,
+		log:        log,
+	}
+}
+
+func (c *Client) FetchProducts(ctx context.Context) ([]domain.Product, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/products", nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetch products: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	var supplierProducts []supplierProduct
+	if err := json.NewDecoder(resp.Body).Decode(&supplierProducts); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
+	}
+
+	return mapToDomain(supplierProducts), nil
+}
+
+func mapToDomain(products []supplierProduct) []domain.Product {
+	result := make([]domain.Product, len(products))
+	for i, p := range products {
+		result[i] = domain.Product{
+			ID:    int(p.ID),
+			Name:  p.Name,
+			Price: p.Price,
+			Stock: p.Stock,
+		}
+	}
+	return result
+}
+
+func (c *Client) SendOrder(ctx context.Context, order domain.Order) error {
+	body, err := json.Marshal(order)
+	if err != nil {
+		return fmt.Errorf("marshal order: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/orders", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("send order: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	return nil
+}
