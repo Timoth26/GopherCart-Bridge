@@ -1,4 +1,4 @@
-package supplier
+package supplierA
 
 import (
 	"bytes"
@@ -23,6 +23,12 @@ type supplierProduct struct {
 	Name  string  `json:"name"`
 	Price float64 `json:"price"`
 	Stock int     `json:"stock"`
+}
+
+type supplierOrder struct {
+	ID        int `json:"id"`
+	ProductID int `json:"product_id"`
+	Quantity  int `json:"quantity"`
 }
 
 var _ domain.SupplierClient = (*Client)(nil)
@@ -73,25 +79,31 @@ func mapToDomain(products []supplierProduct) []domain.Product {
 }
 
 func (c *Client) SendOrder(ctx context.Context, order domain.Order) error {
-	body, err := json.Marshal(order)
-	if err != nil {
-		return fmt.Errorf("marshal order: %w", err)
-	}
+	for _, item := range order.Items {
+		body, err := json.Marshal(supplierOrder{
+			ID:        order.ID,
+			ProductID: item.ProductID,
+			Quantity:  item.Quantity,
+		})
+		if err != nil {
+			return fmt.Errorf("marshal order item (product %d): %w", item.ProductID, err)
+		}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/orders", bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/orders", bytes.NewReader(body))
+		if err != nil {
+			return fmt.Errorf("create request (product %d): %w", item.ProductID, err)
+		}
+		req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("send order: %w", err)
-	}
-	defer resp.Body.Close()
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("send order item (product %d): %w", item.ProductID, err)
+		}
+		resp.Body.Close()
 
-	if resp.StatusCode != http.StatusCreated {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		if resp.StatusCode != http.StatusCreated {
+			return fmt.Errorf("unexpected status code for product %d: %d", item.ProductID, resp.StatusCode)
+		}
 	}
 
 	return nil
