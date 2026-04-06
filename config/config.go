@@ -22,7 +22,11 @@ type Config struct {
 
 func Load() (*Config, error) {
 	if err := godotenv.Load(); err != nil {
-		log.Println("no .env file, reading from environment")
+		if os.IsNotExist(err) {
+			log.Println("no .env file, reading from environment")
+		} else {
+			return nil, fmt.Errorf("failed to load .env file: %w", err)
+		}
 	}
 
 	dbPass, err := getRequiredEnv("DB_PASS")
