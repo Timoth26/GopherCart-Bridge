@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/Timoth26/GopherCart-Bridge/internal/domain"
@@ -14,7 +15,7 @@ import (
 
 type Client struct {
 	httpClient *http.Client
-	baseURL    string
+	base       *url.URL
 	log        *slog.Logger
 }
 
@@ -33,16 +34,20 @@ type supplierOrder struct {
 
 var _ domain.SupplierClient = (*Client)(nil)
 
-func NewClient(baseURL string, timeout time.Duration, log *slog.Logger) *Client {
+func NewClient(baseURL string, timeout time.Duration, log *slog.Logger) (*Client, error) {
+	base, err := url.Parse(baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("parse supplier base URL: %w", err)
+	}
 	return &Client{
 		httpClient: &http.Client{Timeout: timeout},
-		baseURL:    baseURL,
+		base:       base,
 		log:        log,
-	}
+	}, nil
 }
 
 func (c *Client) FetchProducts(ctx context.Context) ([]domain.Product, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/products", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base.JoinPath("products").String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
@@ -89,7 +94,7 @@ func (c *Client) SendOrder(ctx context.Context, order domain.Order) error {
 			return fmt.Errorf("marshal order item (product %d): %w", item.ProductID, err)
 		}
 
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/orders", bytes.NewReader(body))
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base.JoinPath("orders").String(), bytes.NewReader(body))
 		if err != nil {
 			return fmt.Errorf("create request (product %d): %w", item.ProductID, err)
 		}
