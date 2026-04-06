@@ -11,12 +11,12 @@ import (
 	"time"
 
 	"github.com/Timoth26/GopherCart-Bridge/internal/domain"
+	"github.com/Timoth26/GopherCart-Bridge/internal/supplier"
 )
 
 type Client struct {
-	httpClient *http.Client
-	base       *url.URL
-	log        *slog.Logger
+	supplier.Base
+	endpoint *url.URL
 }
 
 type supplierProduct struct {
@@ -35,24 +35,23 @@ type supplierOrder struct {
 var _ domain.SupplierClient = (*Client)(nil)
 
 func NewClient(baseURL string, timeout time.Duration, log *slog.Logger) (*Client, error) {
-	base, err := url.Parse(baseURL)
+	endpoint, err := url.Parse(baseURL)
 	if err != nil {
 		return nil, fmt.Errorf("parse supplier base URL: %w", err)
 	}
 	return &Client{
-		httpClient: &http.Client{Timeout: timeout},
-		base:       base,
-		log:        log,
+		Base:     supplier.NewBase(timeout, log),
+		endpoint: endpoint,
 	}, nil
 }
 
 func (c *Client) FetchProducts(ctx context.Context) ([]domain.Product, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base.JoinPath("products").String(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.endpoint.JoinPath("products").String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.HTTP.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("fetch products: %w", err)
 	}
@@ -94,13 +93,13 @@ func (c *Client) SendOrder(ctx context.Context, order domain.Order) error {
 			return fmt.Errorf("marshal order item (product %d): %w", item.ProductID, err)
 		}
 
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base.JoinPath("orders").String(), bytes.NewReader(body))
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint.JoinPath("orders").String(), bytes.NewReader(body))
 		if err != nil {
 			return fmt.Errorf("create request (product %d): %w", item.ProductID, err)
 		}
 		req.Header.Set("Content-Type", "application/json")
 
-		resp, err := c.httpClient.Do(req)
+		resp, err := c.HTTP.Do(req)
 		if err != nil {
 			return fmt.Errorf("send order item (product %d): %w", item.ProductID, err)
 		}
