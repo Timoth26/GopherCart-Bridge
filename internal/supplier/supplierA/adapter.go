@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -38,6 +39,12 @@ func NewClient(baseURL string, timeout time.Duration, log *slog.Logger) (*Client
 	endpoint, err := url.Parse(baseURL)
 	if err != nil {
 		return nil, fmt.Errorf("parse supplier base URL: %w", err)
+	}
+	if endpoint.Scheme != "http" && endpoint.Scheme != "https" {
+		return nil, fmt.Errorf("supplier base URL must use http or https scheme, got %q", endpoint.Scheme)
+	}
+	if endpoint.Host == "" {
+		return nil, fmt.Errorf("supplier base URL must include a host: %q", baseURL)
 	}
 	return &Client{
 		Base:     supplier.NewBase(timeout, log),
@@ -84,31 +91,40 @@ func mapToDomain(products []supplierProduct) []domain.Product {
 
 func (c *Client) SendOrder(ctx context.Context, order domain.Order) error {
 	for _, item := range order.Items {
-		body, err := json.Marshal(supplierOrder{
-			ID:        order.ID,
-			ProductID: item.ProductID,
-			Quantity:  item.Quantity,
-		})
-		if err != nil {
-			return fmt.Errorf("marshal order item (product %d): %w", item.ProductID, err)
-		}
-
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint.JoinPath("orders").String(), bytes.NewReader(body))
-		if err != nil {
-			return fmt.Errorf("create request (product %d): %w", item.ProductID, err)
-		}
-		req.Header.Set("Content-Type", "application/json")
-
-		resp, err := c.HTTP.Do(req)
-		if err != nil {
-			return fmt.Errorf("send order item (product %d): %w", item.ProductID, err)
-		}
-		resp.Body.Close()
-
-		if resp.StatusCode != http.StatusCreated {
-			return fmt.Errorf("unexpected status code for product %d: %d", item.ProductID, resp.StatusCode)
+		if err := c.sendOrderItem(ctx, order.ID, item); err != nil {
+			return err
 		}
 	}
+	return nil
+}
 
+func (c *Client) sendOrderItem(ctx context.Context, orderID int, item domain.OrderItem) error {
+	body, err := json.Marshal(supplierOrder{
+		ID:        orderID,
+		ProductID: item.ProductID,
+		Quantity:  item.Quantity,
+	})
+	if err != nil {
+		return fmt.Errorf("marshal order item (product %d): %w", item.ProductID, err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint.JoinPath("orders").String(), bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("create request (product %d): %w", item.ProductID, err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return fmt.Errorf("send order item (product %d): %w", item.ProductID, err)
+	}
+	defer func() {
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+	}()
+
+	if resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("unexpected status code for product %d: %d", item.ProductID, resp.StatusCode)
+	}
 	return nil
 }
