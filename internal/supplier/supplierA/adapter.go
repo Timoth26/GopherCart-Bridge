@@ -26,9 +26,9 @@ type supplierProduct struct {
 }
 
 type supplierOrder struct {
-	ID        int `json:"id"`
-	ProductID int `json:"product_id"`
-	Quantity  int `json:"quantity"`
+	ID        int   `json:"id"`
+	ProductID int64 `json:"product_id"`
+	Quantity  int   `json:"quantity"`
 }
 
 var _ domain.SupplierClient = (*Client)(nil)
@@ -69,7 +69,7 @@ func mapToDomain(products []supplierProduct) []domain.Product {
 	result := make([]domain.Product, len(products))
 	for i, p := range products {
 		result[i] = domain.Product{
-			ID:    int(p.ID),
+			ID:    p.ID,
 			Name:  p.Name,
 			Price: p.Price,
 			Stock: p.Stock,
