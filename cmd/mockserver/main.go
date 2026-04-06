@@ -39,7 +39,9 @@ func main() {
 
 func handleGetProducts(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(products)
+	if err := json.NewEncoder(w).Encode(products); err != nil {
+		log.Printf("encode products response: %v", err)
+	}
 }
 
 func handlePostOrder(w http.ResponseWriter, r *http.Request) {
@@ -53,8 +55,10 @@ func handlePostOrder(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]any{
+	if err := json.NewEncoder(w).Encode(map[string]any{
 		"status":   "accepted",
 		"order_id": order.ID,
-	})
+	}); err != nil {
+		log.Printf("encode order response: %v", err)
+	}
 }
