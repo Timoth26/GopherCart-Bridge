@@ -65,6 +65,7 @@ func (c *Client) FetchProducts(ctx context.Context) ([]domain.Product, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		_, _ = io.Copy(io.Discard, resp.Body)
 		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
