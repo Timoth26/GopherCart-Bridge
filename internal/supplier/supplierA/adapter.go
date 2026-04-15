@@ -62,7 +62,7 @@ func (c *Client) FetchProducts(ctx context.Context) ([]domain.Product, error) {
 	if err != nil {
 		return nil, fmt.Errorf("fetch products: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		_, _ = io.Copy(io.Discard, resp.Body)
@@ -120,8 +120,8 @@ func (c *Client) sendOrderItem(ctx context.Context, orderID int, item domain.Ord
 		return fmt.Errorf("send order item (product %d): %w", item.ProductID, err)
 	}
 	defer func() {
-		io.Copy(io.Discard, resp.Body)
-		resp.Body.Close()
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
 	}()
 
 	if resp.StatusCode != http.StatusCreated {
