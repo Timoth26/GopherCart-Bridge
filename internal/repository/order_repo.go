@@ -1,0 +1,206 @@
+package repository
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+
+	"github.com/jmoiron/sqlx"
+
+	"github.com/Timoth26/GopherCart-Bridge/internal/domain"
+)
+
+type OrderRepository struct {
+	db *sqlx.DB
+}
+
+func NewOrderRepository(db *sqlx.DB) *OrderRepository {
+	return &OrderRepository{db: db}
+}
+
+func (r *OrderRepository) GetByID(ctx context.Context, id int64) (*domain.Order, error) {
+	var o domain.Order
+
+	err := r.db.GetContext(ctx, &o, `
+		SELECT id, total_price, status, created_at
+		FROM orders
+		WHERE id = $1
+	`, id)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, domain.ErrOrderNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get order by id: %w", err)
+	}
+
+	items, err := r.fetchItems(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	o.Items = items
+
+	return &o, nil
+}
+
+func (r *OrderRepository) GetAll(ctx context.Context) ([]domain.Order, error) {
+	var orders []domain.Order
+
+	err := r.db.SelectContext(ctx, &orders, `
+		SELECT id, total_price, status, created_at
+		FROM orders
+		ORDER BY id
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("get all orders: %w", err)
+	}
+
+	for i := range orders {
+		items, err := r.fetchItems(ctx, orders[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		orders[i].Items = items
+	}
+
+	return orders, nil
+}
+
+func (r *OrderRepository) Create(ctx context.Context, o *domain.Order) error {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("create order begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	err = tx.QueryRowContext(ctx, `
+		INSERT INTO orders (total_price, status)
+		VALUES ($1, $2)
+		RETURNING id, created_at
+	`, o.TotalPrice, o.Status).Scan(&o.ID, &o.CreatedAt)
+	if err != nil {
+		return fmt.Errorf("create order insert: %w", err)
+	}
+
+	for i := range o.Items {
+		o.Items[i].OrderID = o.ID
+		err = tx.QueryRowContext(ctx, `
+			INSERT INTO order_items (order_id, product_id, quantity, line_total)
+			VALUES ($1, $2, $3, $4)
+			RETURNING id
+		`, o.Items[i].OrderID, o.Items[i].ProductID, o.Items[i].Quantity, o.Items[i].LineTotal).
+			Scan(&o.Items[i].ID)
+		if err != nil {
+			return fmt.Errorf("create order item: %w", err)
+		}
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("create order commit: %w", err)
+	}
+
+	return nil
+}
+
+func (r *OrderRepository) UpdateStatus(ctx context.Context, id int64, status string) error {
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE orders
+		SET status = $1
+		WHERE id = $2
+	`, status, id)
+	if err != nil {
+		return fmt.Errorf("update order status: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("update order status rows affected: %w", err)
+	}
+	if rows == 0 {
+		return domain.ErrOrderNotFound
+	}
+
+	return nil
+}
+
+func (r *OrderRepository) Delete(ctx context.Context, id int64) error {
+	result, err := r.db.ExecContext(ctx, `
+		DELETE FROM orders
+		WHERE id = $1
+	`, id)
+	if err != nil {
+		return fmt.Errorf("delete order: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("delete order rows affected: %w", err)
+	}
+	if rows == 0 {
+		return domain.ErrOrderNotFound
+	}
+
+	return nil
+}
+
+// fetchItems loads order_items joined with products for a given order.
+func (r *OrderRepository) fetchItems(ctx context.Context, orderID int64) ([]domain.OrderItem, error) {
+	type row struct {
+		ID        int64   `db:"id"`
+		OrderID   int64   `db:"order_id"`
+		ProductID int64   `db:"product_id"`
+		Quantity  int     `db:"quantity"`
+		LineTotal float64 `db:"line_total"`
+		
+		ProdName        string  `db:"prod_name"`
+		ProdDescription string  `db:"prod_description"`
+		ProdPrice       float64 `db:"prod_price"`
+		ProdStock       int     `db:"prod_stock"`
+		ProdProviderID  int     `db:"prod_provider_id"`
+	}
+
+	var rows []row
+
+	err := r.db.SelectContext(ctx, &rows, `
+		SELECT
+			oi.id,
+			oi.order_id,
+			oi.product_id,
+			oi.quantity,
+			oi.line_total,
+			p.name        AS prod_name,
+			p.description AS prod_description,
+			p.price       AS prod_price,
+			p.stock       AS prod_stock,
+			p.provider_id AS prod_provider_id
+		FROM order_items oi
+		JOIN products p ON p.id = oi.product_id
+		WHERE oi.order_id = $1
+		ORDER BY oi.id
+	`, orderID)
+	if err != nil {
+		return nil, fmt.Errorf("fetch order items: %w", err)
+	}
+
+	items := make([]domain.OrderItem, len(rows))
+	for i, row := range rows {
+		items[i] = domain.OrderItem{
+			ID:        row.ID,
+			OrderID:   row.OrderID,
+			ProductID: row.ProductID,
+			Quantity:  row.Quantity,
+			LineTotal: row.LineTotal,
+			Product: domain.Product{
+				ID:          row.ProductID,
+				Name:        row.ProdName,
+				Description: row.ProdDescription,
+				Price:       row.ProdPrice,
+				Stock:       row.ProdStock,
+				ProviderID:  row.ProdProviderID,
+			},
+		}
+	}
+
+	return items, nil
+}

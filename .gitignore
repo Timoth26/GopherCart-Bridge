@@ -33,3 +33,7 @@ go.work.sum
 
 # AI
 .cursorrules
+
+# Local Go build/module cache (created by sandbox workarounds, never commit)
+.gocache/
+.gopath/

@@ -28,7 +28,7 @@ type supplierProduct struct {
 }
 
 type supplierOrder struct {
-	ID        int   `json:"id"`
+	ID        int64 `json:"id"`
 	ProductID int64 `json:"product_id"`
 	Quantity  int   `json:"quantity"`
 }
@@ -99,7 +99,7 @@ func (c *Client) SendOrder(ctx context.Context, order domain.Order) error {
 	return nil
 }
 
-func (c *Client) sendOrderItem(ctx context.Context, orderID int, item domain.OrderItem) error {
+func (c *Client) sendOrderItem(ctx context.Context, orderID int64, item domain.OrderItem) error {
 	body, err := json.Marshal(supplierOrder{
 		ID:        orderID,
 		ProductID: item.ProductID,
