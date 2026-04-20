@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -24,8 +25,7 @@ func NewDB(ctx context.Context, cfg *config.Config) (*sqlx.DB, error) {
 	}
 
 	if err := db.PingContext(ctx); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("ping db: %w", err)
+		return nil, errors.Join(fmt.Errorf("ping db: %w", err), db.Close())
 	}
 
 	db.SetMaxOpenConns(25)

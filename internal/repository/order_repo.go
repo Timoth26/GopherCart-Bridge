@@ -67,12 +67,16 @@ func (r *OrderRepository) GetAll(ctx context.Context) ([]domain.Order, error) {
 	return orders, nil
 }
 
-func (r *OrderRepository) Create(ctx context.Context, o *domain.Order) error {
+func (r *OrderRepository) Create(ctx context.Context, o *domain.Order) (err error) {
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("create order begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+			err = errors.Join(err, fmt.Errorf("rollback: %w", rbErr))
+		}
+	}()
 
 	err = tx.QueryRowContext(ctx, `
 		INSERT INTO orders (total_price, status)
