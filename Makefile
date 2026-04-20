@@ -27,10 +27,10 @@ mock:
 	go run ./cmd/mockserver
 
 up:
-	docker compose up -d
+	docker-compose up -d
 
 down:
-	docker compose down
+	docker-compose down -v
 
 migrate:
 	@for f in $$(ls migrations/*.sql | sort); do \

@@ -1,6 +1,9 @@
 package domain
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 type Product struct {
 	ID          int64   `json:"id"          db:"id"`
@@ -16,5 +19,11 @@ type ProductRepository interface {
 	GetAll(ctx context.Context) ([]Product, error)
 	Create(ctx context.Context, p *Product) error
 	Update(ctx context.Context, p *Product) error
+	Delete(ctx context.Context, id int64) error
+}
+
+type ProductCache interface {
+	Get(ctx context.Context, id int64) (*Product, error)
+	Set(ctx context.Context, p *Product, ttl time.Duration) error
 	Delete(ctx context.Context, id int64) error
 }

@@ -6,13 +6,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jmoiron/sqlx"
 
 	"github.com/Timoth26/GopherCart-Bridge/internal/domain"
 )
-
-const pgDuplicateKey = "23505"
 
 type ProductRepository struct {
 	db *sqlx.DB
@@ -64,10 +61,6 @@ func (r *ProductRepository) Create(ctx context.Context, p *domain.Product) error
 	`, p.Name, p.Description, p.Price, p.Stock, p.ProviderID).Scan(&p.ID)
 
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == pgDuplicateKey {
-			return domain.ErrProductAlreadyExists
-		}
 		return fmt.Errorf("create product: %w", err)
 	}
 
