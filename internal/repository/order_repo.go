@@ -56,12 +56,22 @@ func (r *OrderRepository) GetAll(ctx context.Context) ([]domain.Order, error) {
 		return nil, fmt.Errorf("get all orders: %w", err)
 	}
 
+	if len(orders) == 0 {
+		return orders, nil
+	}
+
+	ids := make([]int64, len(orders))
+	for i, o := range orders {
+		ids[i] = o.ID
+	}
+
+	itemsByOrder, err := r.fetchItemsForOrders(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+
 	for i := range orders {
-		items, err := r.fetchItems(ctx, orders[i].ID)
-		if err != nil {
-			return nil, err
-		}
-		orders[i].Items = items
+		orders[i].Items = itemsByOrder[orders[i].ID]
 	}
 
 	return orders, nil
@@ -148,15 +158,22 @@ func (r *OrderRepository) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
-// fetchItems loads order_items joined with products for a given order.
 func (r *OrderRepository) fetchItems(ctx context.Context, orderID int64) ([]domain.OrderItem, error) {
+	byOrder, err := r.fetchItemsForOrders(ctx, []int64{orderID})
+	if err != nil {
+		return nil, err
+	}
+	return byOrder[orderID], nil
+}
+
+func (r *OrderRepository) fetchItemsForOrders(ctx context.Context, orderIDs []int64) (map[int64][]domain.OrderItem, error) {
 	type row struct {
 		ID        int64   `db:"id"`
 		OrderID   int64   `db:"order_id"`
 		ProductID int64   `db:"product_id"`
 		Quantity  int     `db:"quantity"`
 		LineTotal float64 `db:"line_total"`
-		
+
 		ProdName        string  `db:"prod_name"`
 		ProdDescription string  `db:"prod_description"`
 		ProdPrice       float64 `db:"prod_price"`
@@ -164,9 +181,7 @@ func (r *OrderRepository) fetchItems(ctx context.Context, orderID int64) ([]doma
 		ProdProviderID  int     `db:"prod_provider_id"`
 	}
 
-	var rows []row
-
-	err := r.db.SelectContext(ctx, &rows, `
+	query, args, err := sqlx.In(`
 		SELECT
 			oi.id,
 			oi.order_id,
@@ -180,31 +195,37 @@ func (r *OrderRepository) fetchItems(ctx context.Context, orderID int64) ([]doma
 			p.provider_id AS prod_provider_id
 		FROM order_items oi
 		JOIN products p ON p.id = oi.product_id
-		WHERE oi.order_id = $1
-		ORDER BY oi.id
-	`, orderID)
+		WHERE oi.order_id IN (?)
+		ORDER BY oi.order_id, oi.id
+	`, orderIDs)
 	if err != nil {
+		return nil, fmt.Errorf("build fetch items query: %w", err)
+	}
+	query = r.db.Rebind(query)
+
+	var rows []row
+	if err := r.db.SelectContext(ctx, &rows, query, args...); err != nil {
 		return nil, fmt.Errorf("fetch order items: %w", err)
 	}
 
-	items := make([]domain.OrderItem, len(rows))
-	for i, row := range rows {
-		items[i] = domain.OrderItem{
-			ID:        row.ID,
-			OrderID:   row.OrderID,
-			ProductID: row.ProductID,
-			Quantity:  row.Quantity,
-			LineTotal: row.LineTotal,
+	result := make(map[int64][]domain.OrderItem, len(orderIDs))
+	for _, r := range rows {
+		result[r.OrderID] = append(result[r.OrderID], domain.OrderItem{
+			ID:        r.ID,
+			OrderID:   r.OrderID,
+			ProductID: r.ProductID,
+			Quantity:  r.Quantity,
+			LineTotal: r.LineTotal,
 			Product: domain.Product{
-				ID:          row.ProductID,
-				Name:        row.ProdName,
-				Description: row.ProdDescription,
-				Price:       row.ProdPrice,
-				Stock:       row.ProdStock,
-				ProviderID:  row.ProdProviderID,
+				ID:          r.ProductID,
+				Name:        r.ProdName,
+				Description: r.ProdDescription,
+				Price:       r.ProdPrice,
+				Stock:       r.ProdStock,
+				ProviderID:  r.ProdProviderID,
 			},
-		}
+		})
 	}
 
-	return items, nil
+	return result, nil
 }
