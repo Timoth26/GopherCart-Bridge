@@ -2,11 +2,14 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sync"
 
 	"github.com/Timoth26/GopherCart-Bridge/internal/domain"
 )
+
+var ErrPoolStopped = errors.New("worker pool stopped")
 
 type productService interface {
 	Upsert(ctx context.Context, p *domain.Product) error
@@ -30,9 +33,9 @@ type Job struct {
 
 type Pool struct {
 	jobs     chan Job
+	done     chan struct{}
 	supplier domain.SupplierClient
 	products productService
-	cache    domain.ProductCache
 	orders   orderService
 	workers  int
 	log      *slog.Logger
@@ -44,15 +47,14 @@ func NewPool(
 	bufSize int,
 	supplier domain.SupplierClient,
 	products productService,
-	cache domain.ProductCache,
 	orders orderService,
 	log *slog.Logger,
 ) *Pool {
 	return &Pool{
 		jobs:     make(chan Job, bufSize),
+		done:     make(chan struct{}),
 		supplier: supplier,
 		products: products,
-		cache:    cache,
 		orders:   orders,
 		workers:  workers,
 		log:      log,
@@ -66,12 +68,19 @@ func (p *Pool) Start(ctx context.Context) {
 	}
 }
 
-func (p *Pool) Submit(job Job) {
-	p.jobs <- job
+func (p *Pool) Submit(ctx context.Context, job Job) error {
+	select {
+	case p.jobs <- job:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-p.done:
+		return ErrPoolStopped
+	}
 }
 
 func (p *Pool) Stop() {
-	close(p.jobs)
+	close(p.done)
 	p.wg.Wait()
 }
 
@@ -79,12 +88,11 @@ func (p *Pool) work(ctx context.Context, id int) {
 	defer p.wg.Done()
 	for {
 		select {
-		case job, ok := <-p.jobs:
-			if !ok {
-				return
-			}
+		case job := <-p.jobs:
 			p.handle(ctx, id, job)
 		case <-ctx.Done():
+			return
+		case <-p.done:
 			return
 		}
 	}
@@ -96,7 +104,7 @@ func (p *Pool) handle(ctx context.Context, workerID int, job Job) {
 	var err error
 	switch job.Kind {
 	case SyncJob:
-		err = newSyncJob(p.supplier, p.products, p.cache, p.log).run(ctx)
+		err = newSyncJob(p.supplier, p.products, p.log).run(ctx)
 	case OrderJob:
 		err = newOrderJob(p.supplier, p.orders, p.log).run(ctx)
 	default:

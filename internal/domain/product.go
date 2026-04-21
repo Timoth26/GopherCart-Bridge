@@ -19,6 +19,7 @@ type ProductRepository interface {
 	GetAll(ctx context.Context) ([]Product, error)
 	Create(ctx context.Context, p *Product) error
 	Update(ctx context.Context, p *Product) error
+	Upsert(ctx context.Context, p *Product) error
 	Delete(ctx context.Context, id int64) error
 }
 

@@ -11,20 +11,13 @@ import (
 type syncJob struct {
 	supplier domain.SupplierClient
 	products productService
-	cache    domain.ProductCache
 	log      *slog.Logger
 }
 
-func newSyncJob(
-	supplier domain.SupplierClient,
-	products productService,
-	cache domain.ProductCache,
-	log *slog.Logger,
-) *syncJob {
+func newSyncJob(supplier domain.SupplierClient, products productService, log *slog.Logger) *syncJob {
 	return &syncJob{
 		supplier: supplier,
 		products: products,
-		cache:    cache,
 		log:      log,
 	}
 }
@@ -41,9 +34,6 @@ func (j *syncJob) run(ctx context.Context) error {
 			j.log.ErrorContext(ctx, "upsert product failed", "product_id", products[i].ID, "err", err)
 			failed++
 			continue
-		}
-		if err := j.cache.Delete(ctx, products[i].ID); err != nil {
-			j.log.WarnContext(ctx, "cache invalidation failed", "product_id", products[i].ID, "err", err)
 		}
 	}
 

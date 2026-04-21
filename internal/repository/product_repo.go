@@ -88,6 +88,27 @@ func (r *ProductRepository) Update(ctx context.Context, p *domain.Product) error
 	return nil
 }
 
+func (r *ProductRepository) Upsert(ctx context.Context, p *domain.Product) error {
+	err := r.db.QueryRowContext(ctx, `
+		INSERT INTO products (id, name, description, price, stock, provider_id)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		ON CONFLICT (id) DO UPDATE
+			SET name        = EXCLUDED.name,
+			    description = EXCLUDED.description,
+			    price       = EXCLUDED.price,
+			    stock       = EXCLUDED.stock,
+			    provider_id = EXCLUDED.provider_id,
+			    updated_at  = NOW()
+		RETURNING id
+	`, p.ID, p.Name, p.Description, p.Price, p.Stock, p.ProviderID).Scan(&p.ID)
+
+	if err != nil {
+		return fmt.Errorf("upsert product: %w", err)
+	}
+
+	return nil
+}
+
 func (r *ProductRepository) Delete(ctx context.Context, id int64) error {
 	result, err := r.db.ExecContext(ctx, `
 		DELETE FROM products

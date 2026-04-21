@@ -37,11 +37,15 @@ func (s *Scheduler) Run(ctx context.Context) {
 		select {
 		case <-syncTicker.C:
 			s.log.InfoContext(ctx, "submitting sync job")
-			s.pool.Submit(Job{Kind: SyncJob})
+			if err := s.pool.Submit(ctx, Job{Kind: SyncJob}); err != nil {
+				s.log.WarnContext(ctx, "submit sync job failed", "err", err)
+			}
 
 		case <-orderTicker.C:
 			s.log.InfoContext(ctx, "submitting order job")
-			s.pool.Submit(Job{Kind: OrderJob})
+			if err := s.pool.Submit(ctx, Job{Kind: OrderJob}); err != nil {
+				s.log.WarnContext(ctx, "submit order job failed", "err", err)
+			}
 
 		case <-ctx.Done():
 			s.log.InfoContext(ctx, "scheduler stopped")
