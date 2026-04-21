@@ -59,6 +59,18 @@ func (s *ProductService) Create(ctx context.Context, p *domain.Product) error {
 	return nil
 }
 
+func (s *ProductService) Upsert(ctx context.Context, p *domain.Product) error {
+	if err := s.repo.Upsert(ctx, p); err != nil {
+		return err
+	}
+
+	if err := s.cache.Delete(ctx, p.ID); err != nil {
+		s.log.WarnContext(ctx, "product cache delete failed after upsert", "id", p.ID, "err", err)
+	}
+
+	return nil
+}
+
 func (s *ProductService) Update(ctx context.Context, p *domain.Product) error {
 	if err := s.repo.Update(ctx, p); err != nil {
 		return err
