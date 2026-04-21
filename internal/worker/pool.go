@@ -60,7 +60,7 @@ func NewPool(
 }
 
 func (p *Pool) Start(ctx context.Context) {
-	for i := range p.workers {
+	for i := 0; i < p.workers; i++ {
 		p.wg.Add(1)
 		go p.work(ctx, i)
 	}
