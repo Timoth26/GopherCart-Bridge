@@ -117,7 +117,7 @@ func (r *OrderRepository) Create(ctx context.Context, o *domain.Order) (err erro
 	return nil
 }
 
-func (r *OrderRepository) UpdateStatus(ctx context.Context, id int64, status string) error {
+func (r *OrderRepository) UpdateStatus(ctx context.Context, id int64, status domain.OrderStatus) error {
 	result, err := r.db.ExecContext(ctx, `
 		UPDATE orders
 		SET status = $1

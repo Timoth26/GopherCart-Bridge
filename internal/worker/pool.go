@@ -17,7 +17,7 @@ type productService interface {
 
 type orderService interface {
 	GetPending(ctx context.Context) ([]domain.Order, error)
-	UpdateStatus(ctx context.Context, id int64, status string) error
+	UpdateStatus(ctx context.Context, id int64, status domain.OrderStatus) error
 }
 
 type JobKind string

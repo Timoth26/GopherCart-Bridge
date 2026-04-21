@@ -34,7 +34,7 @@ func (s *OrderService) Create(ctx context.Context, o *domain.Order) error {
 	return nil
 }
 
-func (s *OrderService) UpdateStatus(ctx context.Context, id int64, status string) error {
+func (s *OrderService) UpdateStatus(ctx context.Context, id int64, status domain.OrderStatus) error {
 	if err := s.repo.UpdateStatus(ctx, id, status); err != nil {
 		return err
 	}

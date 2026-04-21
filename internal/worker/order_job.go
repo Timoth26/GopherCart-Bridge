@@ -35,7 +35,7 @@ func (j *orderJob) run(ctx context.Context) error {
 			failed++
 			continue
 		}
-		if err := j.orders.UpdateStatus(ctx, order.ID, "sent"); err != nil {
+		if err := j.orders.UpdateStatus(ctx, order.ID, domain.OrderStatusSent); err != nil {
 			j.log.ErrorContext(ctx, "update order status failed", "order_id", order.ID, "err", err)
 			failed++
 			continue

@@ -5,10 +5,17 @@ import (
 	"time"
 )
 
+type OrderStatus string
+
+const (
+	OrderStatusPending OrderStatus = "pending"
+	OrderStatusSent    OrderStatus = "sent"
+)
+
 type Order struct {
 	ID         int64       `json:"id"          db:"id"`
 	TotalPrice float64     `json:"total_price" db:"total_price"`
-	Status     string      `json:"status"      db:"status"`
+	Status     OrderStatus `json:"status"      db:"status"`
 	CreatedAt  time.Time   `json:"created_at"  db:"created_at"`
 	Items      []OrderItem `json:"items"       db:"-"`
 }
@@ -26,6 +33,6 @@ type OrderRepository interface {
 	GetByID(ctx context.Context, id int64) (*Order, error)
 	GetAll(ctx context.Context) ([]Order, error)
 	Create(ctx context.Context, o *Order) error
-	UpdateStatus(ctx context.Context, id int64, status string) error
+	UpdateStatus(ctx context.Context, id int64, status OrderStatus) error
 	Delete(ctx context.Context, id int64) error
 }
